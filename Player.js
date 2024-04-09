@@ -1,49 +1,60 @@
-import {MOVE, Player} from "Player.js";
+/* enum for moving direction */
+const MOVE = {
+    LEFT: -1,
+    RIGHT: 1,
+    STOP: 0
+};
+Object.freeze(MOVE);
 
-const cnvs = document.querySelector(".pong canvas");
-let ctx = cnvs.getContext("2d");
-
-const paddleInfo = {
-    width: 70,
-    height: 10,
-    space: 10
-}
-
-const player1 = new Player(paddleInfo.height, paddleInfo.width, paddleInfo.space + paddleInfo.height / 2, cnvs.height / 2, 0, 10);
-
-document.addEventListener("keydown", (event) => {
-    if (event.key === "ArrowUp") {
-        player1._movingLeft = true;
-    }
-    else if (event.key === "ArrowDown") {
-        player1._movingRight = true;
-    }
-});
-
-document.addEventListener("keyup", (event) => {
-    if (event.key === "ArrowUp") {
-        player1._movingLeft = false;
-    }
-    else if (event.key === "ArrowDown") {
-        player1._movingRight = false;
-    }
-});
-
-function move()
+class Player
 {
-    if (player1.direction() === MOVE.LEFT) {
-        player1.moveLeft();
+    constructor(widthX, widthY, posX, posY, diffX, diffY)
+    {
+        this._posX = posX;
+        this._posY = posY;
+        this._widthX = widthX;
+        this._widthY = widthY;
+        this._diffX = diffX;
+        this._diffY = diffY;
+        this._movingLeft = false;
+        this._movingRight = false;
     }
-    else if (player1.direction() === MOVE.RIGHT) {
-        player1.moveRight();
+
+    /* it doesn't move if left and right are pressed simultaneously. */
+    moveLeft()
+    {
+        const afterX = this._posX - this._diffX;
+        const afterY = this._posY - this._diffY;
+        if (afterX - this._widthX / 2 >= 0 && afterX + this._widthX / 2 <= cnvs.width)
+            this._posX = afterX;
+        if (afterY - this._widthY / 2 >= 0 && afterY + this._widthY / 2 <= cnvs.height)
+            this._posY = afterY;
     }
-}
 
-function show()
-{
-    ctx.clearRect(0, 0, cnvs.width, cnvs.height);
-    move();
-    player1.draw();
-}
+    moveRight()
+    {
+        const afterX = this._posX + this._diffX;
+        const afterY = this._posY + this._diffY;
+        if (afterX - this._widthX / 2 >= 0 && afterX + this._widthX / 2 <= cnvs.width)
+            this._posX = afterX;
+        if (afterY - this._widthY / 2 >= 0 && afterY + this._widthY / 2 <= cnvs.height)
+            this._posY = afterY;
+    }
 
-setInterval(show, 50);
+    direction()
+    {
+        if (!(this._movingLeft ^ this._movingRight))
+            return MOVE.STOP;
+        if (this._movingLeft)
+            return MOVE.LEFT;
+        if (this._movingRight)
+            return MOVE.RIGHT;
+    }
+
+    draw()
+    {
+        ctx.fillRect(this._posX - this._widthX / 2, this._posY - this._widthY / 2, this._widthX, this._widthY);
+    }
+};
+
+export {MOVE, Player};
