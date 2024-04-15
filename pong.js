@@ -4,24 +4,27 @@ let ctx = cnvs.getContext("2d");
 const paddleInfo = {
     width: 70,
     height: 10,
-    space: 10
+    space: 10,
+    speed: 10
+}
+
+const ballInfo = {
+    radius: 5,
+    diffX: 5,
+    diffY: 5
 }
 
 const CONFLICT = {
-    NONE: 0,
-    HORIZONTAL: 1,
-    VERTICAL: 2
+    NONE: 0x0,
+    HORIZONTAL: 0x1,
+    VERTICAL: 0x2,
+    WALL_PLAYER1: 0x4,
+    WALL_PLAYER2: 0x8,
+    WALL_PLAYER3: 0x10,
+    WALL_PLAYER4: 0x20,
+    WALL_PLAYER_MASK: 0x3c
 };
 Object.freeze(CONFLICT);
-
-const GAME = {
-    LOSE_PLAYER1: 0,
-    LOSE_PLAYER2: 1,
-    LOSE_PLAYER3: 2,
-    LOSE_PLAYER4: 3,
-    CONTINUE: 4
-}
-Object.freeze(GAME);
 
 class AObject
 {
@@ -31,6 +34,26 @@ class AObject
         this._posY = posY;
         this._diffX = diffX;
         this._diffY = diffY;
+    }
+
+    get posX()
+    {
+        return this._posX;
+    }
+
+    get posY()
+    {
+        return this._posY;
+    }
+
+    get diffX()
+    {
+        return this._diffX;
+    }
+
+    get diffY()
+    {
+        return this._diffY;
     }
 
     move() {}
@@ -110,6 +133,36 @@ class Paddle extends AObject
     {
         ctx.fillRect(this._posX - this._widthX / 2, this._posY - this._widthY / 2, this._widthX, this._widthY);
     }
+
+    get widthX()
+    {
+        return this._widthX;
+    }
+
+    get widthY()
+    {
+        return this._widthY;
+    }
+
+    get movingLeft()
+    {
+        return this._movingLeft;
+    }
+
+    get movingRight()
+    {
+        return this._movingRight;
+    }
+
+    set movingLeft(value)
+    {
+        this._movingLeft = value;
+    }
+
+    set movingRight(value)
+    {
+        this._movingRight = value;
+    }
 };
 
 class Ball extends AObject
@@ -132,16 +185,38 @@ class Ball extends AObject
     /* X방향, Y방향 중 어느쪽에서 충돌했는지 알려주는 함수 */
     _conflict(players)
     {
+        const afterX = this._posX + this._diffX;
+        const afterY = this._posY + this._diffY;
         let conflictResult = CONFLICT.NONE;
 
         for (i = 0; i < players.length; ++i) {
-            if (players[i]._paddle.inside(this._posX + this._radius, this._posY)
-                || players[i]._paddle.inside(this._posX - this._radius, this._posY)) {
+            if (players[i].paddle.inside(afterX + this._radius, afterY)
+                || players[i].paddle.inside(afterX - this._radius, afterY)) {
                 conflictResult |= CONFLICT.HORIZONTAL;
             }
-            if (players[i]._paddle.inside(this._posX, this._posY + this._radius)
-                || players[i]._paddle.inside(this._posX, this._posY - this._radius)) {
+            if (players[i].paddle.inside(afterX, afterY + this._radius)
+                || players[i].paddle.inside(afterX, afterY - this._radius)) {
                 conflictResult |= CONFLICT.VERTICAL;
+            }
+        }
+        if (afterX + this._radius > cnvs.width) {
+            conflictResult |= CONFLICT.WALL_PLAYER1;
+            conflictResult |= CONFLICT.HORIZONTAL;
+        }
+        if (afterX - this._radius < 0) {
+            conflictResult |= CONFLICT.WALL_PLAYER2;
+            conflictResult |= CONFLICT.HORIZONTAL;
+        }
+        if (afterY + this._radius > cnvs.width) {
+            conflictResult |= CONFLICT.VERTICAL;
+            if (players.length >= 3) {
+                conflictResult |= CONFLICT.WALL_PLAYER3;
+            }
+        }
+        if (afterY - this._radius < 0) {
+            conflictResult |= CONFLICT.VERTICAL;
+            if (players.length >= 4) {
+                conflictResult |= CONFLICT.WALL_PLAYER4;
             }
         }
         return conflictResult;
@@ -149,39 +224,20 @@ class Ball extends AObject
 
     move(players)
     {
-        const afterX = this._posX + this._diffX;
-        const afterY = this._posY + this._diffY;
         const conflictResult = this._conflict(players);
 
+        if (conflictResult & CONFLICT.WALL_PLAYER_MASK) {
+            return conflictResult;
+        }
         if (conflictResult & CONFLICT.HORIZONTAL) {
             this._diffX *= -1;
-        }
-        else if (afterX + this._radius > cnvs.width) {
-            this._diffX *= -1;
-            return GAME.LOSE_PLAYER1;
-        }
-        else if (afterX - this._radius < 0) {
-            this._diffX *= -1;
-            return GAME.LOSE_PLAYER2;
         }
         if (conflictResult & CONFLICT.VERTICAL) {
             this._diffY *= -1;
         }
-        else if (afterY + this._radius > cnvs.width) {
-            this._diffY *= -1;
-            if (players.length >= 3) {
-                return GAME.LOSE_PLAYER3;
-            }
-        }
-        else if (afterY - this._radius < 0) {
-            this._diffY *= -1;
-            if (players.length >= 4) {
-                return GAME.LOSE_PLAYER4;
-            }
-        }
         this._posX += this._diffX;
         this._posY += this._diffY;
-        return GAME.CONTINUE;
+        return conflictResult;
     }
 
     draw()
@@ -189,6 +245,11 @@ class Ball extends AObject
         ctx.beginPath();
         ctx.arc(this._posX, this._posY, this._radius, 0, Math.PI * 2, true);
         ctx.fill();
+    }
+
+    get radius()
+    {
+        return this._radius;
     }
 };
 
@@ -207,17 +268,45 @@ const initKeys = [
 ]
 
 const initBalls = [
-    new Ball(new Ball(cnvs.width / 2, cnvs.height / 2, 10, 10, 10))
+    new Ball(cnvs.width / 2, cnvs.height / 2, ballInfo.diffX, ballInfo.diffY, ballInfo.radius)
 ]
+
+class Score
+{
+    constructor()
+    {
+        this._tag = document.createElement("h1");
+        this._score = 0;
+        this._tag.textContent = `${this._score}`;
+        document.querySelector(".scoreboard").appendChild(this._tag);
+    }
+
+    incScore()
+    {
+        ++this._score;
+        this._tag.textContent = `${this._score}`;
+    }
+
+    decScore()
+    {
+        --this._score;
+        this._tag.textContent = `${this._score}`;
+    }
+
+    get score()
+    {
+        return this._score;
+    }
+};
 
 class Player
 {
     constructor(paddle, leftKey, rightKey)
     {
-        this._paddle = new Paddle(paddle._widthX, paddle._widthY, paddle._posX, paddle._posY, paddle._diffX, paddle._diffY);
-        this._keydownHandler = this._makeKeyEventHandler(this._paddle, leftKey, rightKey, true);
-        this._keyupHandler = this._makeKeyEventHandler(this._paddle, leftKey, rightKey, false);
-        this._score = 0;
+        this._paddle = new Paddle(paddle.widthX, paddle.widthY, paddle.posX, paddle.posY, paddle.diffX, paddle.diffY);
+        this._keydownHandler = this._makeKeyEventHandler(leftKey, rightKey, true);
+        this._keyupHandler = this._makeKeyEventHandler(leftKey, rightKey, false);
+        this._score = new Score();
         document.addEventListener("keydown", this._keydownHandler);
         document.addEventListener("keyup", this._keyupHandler);
     }
@@ -226,12 +315,27 @@ class Player
     {
         return ((event) => {
             if (event.key === leftKey) {
-                this._paddle._movingLeft = value;
+                this._paddle.movingLeft = value;
             }
             else if (event.key === rightKey) {
-                this._paddle._movingRight = value;
+                this._paddle.movingRight = value;
             }
         });
+    }
+
+    incScore()
+    {
+        this._score.incScore();
+    }
+
+    decScore()
+    {
+        this._score.decScore();
+    }
+
+    getScore()
+    {
+        return this._score.score;
     }
 
     move()
@@ -243,22 +347,37 @@ class Player
     {
         this._paddle.draw();
     }
+
+    get paddle()
+    {
+        return this._paddle;
+    }
 };
 
-function scoreCalc(players, idx)
+function scoreCalc(players, moveResult)
 {
-    for (i = 0; i < players.length; ++i) {
-        if (i != idx) {
-            ++players[i]._score;
-            console.log(`Player${i + 1}: ${players[i]._score}`);
-        }
+    players.forEach((elem) =>
+    {
+        elem.incScore();
+    })
+    if (moveResult & CONFLICT.WALL_PLAYER1) {
+        players[0].decScore();
+    }
+    if (moveResult & CONFLICT.WALL_PLAYER2) {
+        players[1].decScore();
+    }
+    if (moveResult & CONFLICT.WALL_PLAYER3) {
+        players[2].decScore();
+    }
+    if (moveResult & CONFLICT.WALL_PLAYER4) {
+        players[3].decScore();
     }
 }
 
 function resetGame(players, balls)
 {
     for (i = 0; i < players.length; ++i) {
-        players[i]._paddle.reset(initPaddles[i]);
+        players[i].paddle.reset(initPaddles[i]);
     }
     for (i = 0; i < balls.length; ++i) {
         balls[i].reset(initBalls[i]);
@@ -274,7 +393,7 @@ function moveAll(players, balls)
     balls.forEach((instance) => {
         const moveResult = instance.move(players);
 
-        if (moveResult !== GAME.NOCHANGE) {
+        if (moveResult & CONFLICT.WALL_PLAYER_MASK) {
             scoreCalc(players, moveResult);
             resetGame(players, balls);
         }
@@ -301,7 +420,8 @@ function show(players, balls)
 function startGame(playerNum)
 {
     const players = [];
-    const balls = [new Ball(initBalls[0]._posX, initBalls[0]._posY, initBalls[0]._diffX, initBalls[0]._diffY, initBalls[0]._radius)];
+    const balls = [];
+    balls.push(new Ball(initBalls[0].posX, initBalls[0].posY, initBalls[0].diffX, initBalls[0].diffY, initBalls[0].radius));
 
     for (i = 0; i < playerNum; ++i) {
         players.push(new Player(initPaddles[i], initKeys[i].leftKey, initKeys[i].rightKey));
